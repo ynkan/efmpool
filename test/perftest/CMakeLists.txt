@@ -11,6 +11,9 @@ endif()
 foreach(variant IN ITEMS st mt)
     add_executable(perftest_${variant} variantbench.c)
     target_link_libraries(perftest_${variant} PRIVATE fmpool_${variant})
+    if(NOT WIN32)
+        target_link_libraries(perftest_${variant} PRIVATE Threads::Threads)
+    endif()
     if(WIN32 AND BUILD_SHARED_LIBS)
         add_custom_command(TARGET perftest_${variant} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -36,8 +39,10 @@ if(BUILD_TESTING)
     add_test(NAME fmpool.performance.st.1thread COMMAND perftest_st --threads 1)
     add_test(NAME fmpool.performance.mt.1thread COMMAND perftest_mt --threads 1)
     add_test(NAME fmpool.performance.mt.4threads COMMAND perftest_mt --threads 4)
+    add_test(NAME fmpool.performance.st.4threads.independent
+        COMMAND perftest_st --threads 4 --independent-pools)
     set_tests_properties(fmpool.performance.compare
         fmpool.performance.st.1thread fmpool.performance.mt.1thread
-        fmpool.performance.mt.4threads PROPERTIES
+        fmpool.performance.mt.4threads fmpool.performance.st.4threads.independent PROPERTIES
         LABELS performance RUN_SERIAL TRUE TIMEOUT 300)
 endif()

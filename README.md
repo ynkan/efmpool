@@ -121,23 +121,39 @@ cmake --build build-perf --config Release --target benchmark_compare
 
 Alternatively, build all targets and run
 `ctest --test-dir build-perf -C Release -L performance -V`.
-The summary table explicitly separates three groups: **ST / 1 thread**,
-**MT / 1 thread**, and **MT / 4 threads sharing one pool**. ST / 4 threads is
-marked N/A and never run. CTest also exposes these as separate tests:
+The summary table explicitly separates four groups: **ST / 1 thread**,
+**MT / 1 thread**, **MT / 4 threads sharing one pool**, and
+**ST / 4 threads with one independent pool per worker**. ST / 4 threads
+sharing one pool remains N/A and is never run. CTest also exposes these as separate tests:
 `fmpool.performance.st.1thread`, `fmpool.performance.mt.1thread`, and
-`fmpool.performance.mt.4threads`. `fmpool.performance.compare` runs all three
+`fmpool.performance.mt.4threads`, and
+`fmpool.performance.st.4threads.independent`. `fmpool.performance.compare` runs all four
 and prints the combined table. Each executable also accepts `--threads 1`
-or `--threads 4`; the ST executable rejects four threads.
+or `--threads 4`. For ST with four threads, explicitly use:
+
+```sh
+build-perf/test/perftest/perftest_st --threads 4 --independent-pools
+```
+
+This links one ST library; each worker exclusively owns its pool. It does not
+load four library copies. ST rejects four threads without this explicit mode.
 
 Each group runs warmup and seven measured rounds. **Total work is identical**
 for one and four threads (the four workers divide it):
 
 * `reuse`: 1,048,576 get/free pairs in batches of 64, with a shared fixed
-  capacity of 256 in every group; creation and destruction are outside timing.
+  capacity of 256 for shared-pool groups, or four independent pools of 64
+  slots each. Creation and destruction are outside timing.
 * `growth`: 65,536 get/free pairs across 16 successive shared pools growing
   from 64 to 4,096 slots in blocks of 64. A barrier holds all 4,096 objects
   before any return, ensuring the same peak allocation and block count.
-  Includes pool creation/destruction and phase synchronization.
+  The independent group creates four pools per batch, each growing from 64
+  to 1,024 slots in blocks of 64 (4,096 total slots and 64 total blocks).
+  Each worker creates and destroys its own pool. All four-thread groups use
+  the same phase barriers to hold the same total live objects before return.
+  Includes pool creation/destruction and phase synchronization. Independent
+  pools add pool metadata and reduce per-pool validation scan length, so the
+  result compares ownership strategies rather than only lock overhead.
 
 Thread creation and joining are outside timing; start/finish synchronization
 is included. Per-worker checksums are combined only after completion and
@@ -146,11 +162,13 @@ Output includes median elapsed ms, aggregate ns per get/free pair, and total
 throughput in millions of pairs/second. Aggregate ns/pair is wall time divided
 by the total operation count, **not individual operation latency**. The final
 comparison reports MT(1)-ST(1) overhead and MT(4)/MT(1) total throughput ratio.
-Four workers may be slower because they contend for the same pool mutex.
+The table also reports ST(4 independent)/ST(1) and ST(4 independent)/MT(4 shared)
+throughput ratios. Shared-pool MT workers may be slower due to mutex contention;
+independent ST pools avoid that contention.
 
 All groups use the same checks setting; repeat with `-DFMPOOL_CHECKS=OFF` to
 compare without validation. Measurements are hardware/build/load-dependent
-and have no fixed performance threshold. The driver runs ST(1), MT(1), MT(4)
+and have no fixed performance threshold. The driver runs ST(1), MT(1), MT(4 shared), and ST(4 independent)
 sequentially; avoid other CPU-heavy work while measuring. Run only the compare
 test if you want a single measurement of the matrix rather than also running
 the individual CTest entries.
