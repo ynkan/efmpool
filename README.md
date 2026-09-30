@@ -108,6 +108,53 @@ cmake --build build-consumer
 ctest --test-dir build-consumer -V
 ```
 
+## ST/MT performance comparison
+
+The original `perftest` compares pool and malloc workloads. The additional
+`perftest_st` and `perftest_mt` compile the same `variantbench.c` and link the
+single-thread and thread-safe libraries respectively.
+
+```sh
+cmake -S . -B build-perf -DCMAKE_BUILD_TYPE=Release -DFMPOOL_BUILD_BENCHMARKS=ON
+cmake --build build-perf --config Release --target benchmark_compare
+```
+
+Alternatively, build all targets and run
+`ctest --test-dir build-perf -C Release -L performance -V`.
+The summary table explicitly separates three groups: **ST / 1 thread**,
+**MT / 1 thread**, and **MT / 4 threads sharing one pool**. ST / 4 threads is
+marked N/A and never run. CTest also exposes these as separate tests:
+`fmpool.performance.st.1thread`, `fmpool.performance.mt.1thread`, and
+`fmpool.performance.mt.4threads`. `fmpool.performance.compare` runs all three
+and prints the combined table. Each executable also accepts `--threads 1`
+or `--threads 4`; the ST executable rejects four threads.
+
+Each group runs warmup and seven measured rounds. **Total work is identical**
+for one and four threads (the four workers divide it):
+
+* `reuse`: 1,048,576 get/free pairs in batches of 64, with a shared fixed
+  capacity of 256 in every group; creation and destruction are outside timing.
+* `growth`: 65,536 get/free pairs across 16 successive shared pools growing
+  from 64 to 4,096 slots in blocks of 64. A barrier holds all 4,096 objects
+  before any return, ensuring the same peak allocation and block count.
+  Includes pool creation/destruction and phase synchronization.
+
+Thread creation and joining are outside timing; start/finish synchronization
+is included. Per-worker checksums are combined only after completion and
+validated against the same expected object data total in all groups.
+Output includes median elapsed ms, aggregate ns per get/free pair, and total
+throughput in millions of pairs/second. Aggregate ns/pair is wall time divided
+by the total operation count, **not individual operation latency**. The final
+comparison reports MT(1)-ST(1) overhead and MT(4)/MT(1) total throughput ratio.
+Four workers may be slower because they contend for the same pool mutex.
+
+All groups use the same checks setting; repeat with `-DFMPOOL_CHECKS=OFF` to
+compare without validation. Measurements are hardware/build/load-dependent
+and have no fixed performance threshold. The driver runs ST(1), MT(1), MT(4)
+sequentially; avoid other CPU-heavy work while measuring. Run only the compare
+test if you want a single measurement of the matrix rather than also running
+the individual CTest entries.
+
 ## Example
 ```c
 #include "fmpool.h"
