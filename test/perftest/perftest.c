@@ -3,7 +3,11 @@
 
 #include "fmpool.h"
 
+#ifdef _MSC_VER
+#define NOINLINE __declspec(noinline)
+#else
 #define NOINLINE __attribute__((noinline))
+#endif
 
 typedef struct Point_s
 {
@@ -72,7 +76,7 @@ static NOINLINE void Test(TEST_FUNC_SIG* func, char* text)
 
     ms_elapsed = (double)(end - begin) / CLOCKS_PER_SEC / 0.001;
 
-    printf("%f ms:\t%s time to create and destroy %lu objects.  ", 
+    printf("%f ms:\t%s time to create and destroy %zu objects.  ",
         ms_elapsed, text, i);
     printf("last pointer: %p", res);
     printf("\n");
@@ -92,7 +96,11 @@ static NOINLINE void DoTests(void)
 
 int main()
 {
+  setvbuf(stdout, NULL, _IONBF, 0);
+  printf("[RUN] perftest (thread_safe=%d, checks=%d)\n", FMPOOL_THREAD_SAFE, FMPOOL_CHECKS);
+  puts("[INFO] FMPool holds each batch until destroy; malloc frees each object immediately.");
   DoTests();
+  puts("[SUMMARY] perftest: 6 measurements completed (milliseconds)");
 
   return 0;
 }
